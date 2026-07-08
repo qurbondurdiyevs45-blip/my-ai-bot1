@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fluid Watercolor Sketchbook</title>
+    <style>
+        :root {
+            --bg: #1a1a1a;
+            --panel: rgba(40, 40, 40, 0.85);
+        }
+        body, html { margin: 0; padding: 0; overflow: hidden; background: var(--bg); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        canvas { display: block; cursor: crosshair; touch-action: none; }
+        .controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: var(--panel);
+            padding: 15px;
+            border-radius: 12px;
+            color: white;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            user-select: none;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .row { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+        input[type="range"] { width: 100px; accent-color: #ff4757; }
+        button { 
+            background: #2f3542; color: white; border: none; padding: 8px 12px; 
+            border-radius: 4px; cursor: pointer; transition: 0.2s;
+        }
+        button:hover { background: #57606f; }
+        .palette { display: flex; gap: 5px; }
+        .swatch { width: 24px; height: 24px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; }
+        .swatch.active { border-color: white; transform: scale(1.1); }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <div class="row"><strong>Watercolor Fluid</strong></div>
+        <div class="row">
+            <span>Hue</span>
+            <input type="range" id="hueRange" min="0" max="360" value="200">
+        </div>
+        <div class="row">
+            <span>Viscosity</span>
+            <input type="range" id="viscRange" min="0.8" max="0.99" step="0.01" value="0.95">
+        </div>
+        <div class="palette" id="palette"></div>
+        <button id="clearBtn">Clear Canvas</button>
+        <small>Move mouse to paint & swirl</small>
+    </div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d', { alpha: false });
+        let width, height;
+        
+        const params = {
+            points: [],
+            maxPoints: 800,
+            viscosity: 0.95,
+            hue: 200,
+            isDrawing: false
+        };
+
+        function init() {
+            resize();
+            window.addEventListener('resize', resize);
+            canvas.addEventListener('mousemove', e => handleInput(e.clientX, e.clientY));
+            canvas.addEventListener('touchmove', e => handleInput(e.touches[0].clientX, e.touches[0].clientY));
+            document.getElementById('hueRange').oninput = (e) => params.hue = e.target.value;
+            document.getElementById('viscRange').oninput = (e) => params.viscosity = e.target.value;
+            document.getElementById('clearBtn').onclick = () => params.points = [];
+            setupPalette();
+            animate();
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, 0, width, height);
+        }
+
+        function setupPalette() {
+            const colors = [200, 330, 150, 45, 10, 280];
+            const container = document.getElementById('palette');
+            colors.forEach(h => {
+                const s = document.createElement('div');
+                s.className = 'swatch';
+                s.style.background = `hsl(${h}, 70%, 50%)`;
+                s.onclick = () => {
+                    params.hue = h;
+                    document.getElementById('hueRange').value = h;
+                    document.querySelectorAll('.swatch').forEach(sw => sw.classList.remove('active'));
+                    s.classList.add('active');
+                };
+                container.appendChild(s);
+            });
+        }
+
+        function handleInput(x, y) {
+            for (let i = 0; i < 3; i++) {
+                params.points.push({
+                    x: x + (Math.random() - 0.5) * 10,
+                    y: y + (Math.random() - 0.5) * 10,
+                    vx: (Math.random() - 0.5) * 4,
+                    vy: (Math.random() - 0.5) * 4,
+                    life: 1.0,
+                    hue: params.hue,
+                    size: Math.random() * 15 + 5
+                });
+            }
+            if (params.points.length > params.maxPoints) params.points.shift();
+        }
+
+        function animate() {
+            // Ghosting effect for watercolor bleeding
+            ctx.fillStyle = 'rgba(20, 20, 20, 0.04)';
+            ctx.fillRect(0, 0, width, height);
+
+            for (let i = params.points.length - 1; i >= 0; i--) {
+                const p = params.points[i];
+                
+                // Apply pseudo-fluid physics
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vx *= params.viscosity;
+                p.vy *= params.viscosity;
+                p.life -= 0.005;
+                p.size += 0.2; // Pigment spreading
+
+                if (p.life <= 0) {
+                    params.points.splice(i, 1);
+                    continue;
+                }
+
+                // Draw "Bleeding Color"
+                const alpha = p.life * 0.3;
+                const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
+                grad.addColorStop(0, `hsla(${p.hue}, 80%, 60%, ${alpha})`);
+                grad.addColorStop(1, `hsla(${p.hue}, 80%, 60%, 0)`);
+
+                ctx.globalCompositeOperation = 'lighter';
+                ctx.fillStyle = grad;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        init();
+    </script>
+</body>
+</html>
