@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Biomorphic Crystal Growth</title>
+    <style>
+        :root {
+            --bg: #050508;
+            --panel: rgba(20, 20, 35, 0.85);
+            --accent: #00f2ff;
+        }
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background-color: var(--bg);
+            color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            filter: drop-shadow(0 0 10px rgba(0, 242, 255, 0.2));
+        }
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            padding: 20px;
+            background: var(--panel);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            pointer-events: auto;
+            user-select: none;
+            transition: opacity 0.3s;
+        }
+        .label { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; color: var(--accent); }
+        .desc { font-size: 11px; color: #888; margin-top: 10px; }
+        button {
+            background: transparent; border: 1px solid var(--accent);
+            color: var(--accent); padding: 8px 16px; cursor: pointer;
+            border-radius: 4px; transition: all 0.2s;
+            margin-top: 10px;
+        }
+        button:hover { background: var(--accent); color: #000; }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <div class="label">Biomorphic Seed</div>
+        <button onclick="reset()">Regenerate</button>
+        <div class="desc">Click anywhere to sprout new clusters.<br>Crystals grow based on recursive fractals.</div>
+    </div>
+    <canvas id="cvs"></canvas>
+
+    <script>
+        const canvas = document.getElementById('cvs');
+        const ctx = canvas.getContext('2d');
+        let seeds = [];
+        let time = 0;
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        class Crystal {
+            constructor(x, y, hue) {
+                this.x = x;
+                this.y = y;
+                this.age = 0;
+                this.maxAge = 100 + Math.random() * 150;
+                this.hue = hue || Math.random() * 360;
+                this.branches = [];
+                this.generations = 5;
+                this.thickness = 2 + Math.random() * 4;
+            }
+
+            draw(ctx, time) {
+                this.age += 0.5;
+                if (this.age > this.maxAge) this.age = this.maxAge;
+                
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                this.recursiveDraw(ctx, 0, this.thickness, 60 * (this.age / this.maxAge), this.hue);
+                ctx.restore();
+            }
+
+            recursiveDraw(ctx, depth, width, length, hue) {
+                if (depth > this.generations) return;
+
+                const alpha = Math.max(0, 1 - depth / this.generations);
+                ctx.strokeStyle = `hsla(${hue + depth * 20}, 80%, 60%, ${alpha})`;
+                ctx.lineWidth = width;
+                ctx.lineCap = 'round';
+
+                const branches = 3;
+                for (let i = 0; i < branches; i++) {
+                    ctx.save();
+                    // Biomorphic oscillation
+                    const angle = (Math.PI * 2 / branches) * i + Math.sin(time * 0.001 + depth) * 0.1;
+                    ctx.rotate(angle);
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(0, 0);
+                    ctx.lineTo(0, -length);
+                    ctx.stroke();
+
+                    // Hexagonal node detail
+                    if (depth < 2) {
+                        ctx.fillStyle = 'white';
+                        ctx.beginPath();
+                        ctx.arc(0, -length, width * 0.8, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+
+                    ctx.translate(0, -length);
+                    this.recursiveDraw(ctx, depth + 1, width * 0.7, length * 0.8, hue);
+                    ctx.restore();
+                }
+            }
+        }
+
+        function reset() {
+            seeds = [];
+            seeds.push(new Crystal(window.innerWidth / 2, window.innerHeight / 2, Math.random() * 360));
+        }
+
+        function animate() {
+            time++;
+            ctx.fillStyle = 'rgba(5, 5, 8, 0.15)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            seeds.forEach(s => s.draw(ctx, time));
+            requestAnimationFrame(animate);
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            seeds.push(new Crystal(e.clientX, e.clientY, Math.random() * 360));
+            if (seeds.length > 8) seeds.shift();
+        });
+
+        window.addEventListener('resize', resize);
+        resize();
+        reset();
+        animate();
+    </script>
+</body>
+</html>
