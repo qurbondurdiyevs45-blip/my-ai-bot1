@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Isochronic Rhythm Painter</title>
+    <style>
+        :root {
+            --bg: #0a0a0f;
+            --accent: #00f2ff;
+            --panel: rgba(20, 20, 30, 0.8);
+        }
+        body, html {
+            margin: 0; padding: 0; overflow: hidden;
+            background: var(--bg);
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+        .ui-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: var(--panel);
+            padding: 20px;
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+            pointer-events: auto;
+            user-select: none;
+            max-width: 250px;
+        }
+        h1 { margin: 0 0 10px 0; font-size: 18px; color: var(--accent); letter-spacing: 1px; }
+        p { font-size: 12px; opacity: 0.8; margin-bottom: 20px; }
+        .control-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            font-size: 10px;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+        input[type="range"] {
+            width: 100%;
+            cursor: pointer;
+        }
+        .hint {
+            color: var(--accent);
+            font-weight: bold;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; } 50% { opacity: 0.4; }
+        }
+    </style>
+</head>
+<body>
+    <div class="ui-overlay">
+        <h1>Rhythm Painter</h1>
+        <p>Click & Drag to paint sound-emitting pulses. Each circle represents a spatial oscillator.</p>
+        <div class="control-group">
+            <label>Decay Rate</label>
+            <input type="range" id="decay" min="0.01" max="0.1" step="0.01" value="0.03">
+        </div>
+        <div class="control-group">
+            <label>Swell Speed</label>
+            <input type="range" id="speed" min="1" max="10" step="0.5" value="4">
+        </div>
+        <div class="hint">CLICK TO START AUDIO</div>
+    </div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const decayInput = document.getElementById('decay');
+        const speedInput = document.getElementById('speed');
+
+        let width, height;
+        let nodes = [];
+        let audioCtx = null;
+
+        function init() {
+            resize();
+            window.addEventListener('resize', resize);
+            canvas.addEventListener('mousedown', createNode);
+            animate();
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        class SoundNode {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 0;
+                this.maxRadius = Math.random() * 100 + 50;
+                this.hue = Math.random() * 60 + 170; // Cyan/Blue range
+                this.opacity = 1.0;
+                this.life = 1.0;
+                this.phase = 0;
+                
+                // Audio Setup
+                if (audioCtx) {
+                    this.osc = audioCtx.createOscillator();
+                    this.gain = audioCtx.createGain();
+                    this.osc.type = 'sine';
+                    // Frequency mapped to Y axis
+                    this.osc.frequency.setValueAtTime(440 - (y / height) * 300, audioCtx.currentTime);
+                    this.osc.connect(this.gain);
+                    this.gain.connect(audioCtx.destination);
+                    this.gain.gain.setValueAtTime(0, audioCtx.currentTime);
+                    this.osc.start();
+                }
+            }
+
+            update() {
+                this.phase += parseFloat(speedInput.value) * 0.02;
+                this.life -= parseFloat(decayInput.value) * 0.1;
+                let pulse = Math.sin(this.phase) * 0.5 + 0.5;
+                this.radius = pulse * this.maxRadius;
+
+                if (this.gain) {
+                    const pan = (this.x / width) * 2 - 1;
+                    this.gain.gain.setTargetAtTime(pulse * 0.1 * this.life, audioCtx.currentTime, 0.05);
+                }
+
+                return this.life > 0;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = `hsla(${this.hue}, 100%, 70%, ${this.life})`;
+                ctx.lineWidth = 2 * this.life;
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * 0.5, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 100%, 50%, ${this.life * 0.2})`;
+                ctx.fill();
+            }
+
+            kill() {
+                if (this.osc) {
+                    this.osc.stop();
+                    this.osc.disconnect();
+                }
+            }
+        }
+
+        function createNode(e) {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                document.querySelector('.hint').style.display = 'none';
+            }
+            nodes.push(new SoundNode(e.clientX, e.clientY));
+        }
+
+        function animate() {
+            ctx.fillStyle = 'rgba(10, 10, 15, 0.15)';
+            ctx.fillRect(0, 0, width, height);
+            
+            nodes = nodes.filter(node => {
+                const alive = node.update();
+                if (!alive) node.kill();
+                else node.draw();
+                return alive;
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        init();
+    </script>
+</body>
+</html>
