@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Holographic Stream Terminal</title>
+    <style>
+        :root {
+            --glow-color: #00ffcc;
+            --bg-color: #050a0a;
+        }
+        body, html {
+            margin: 0; padding: 0; overflow: hidden;
+            background: var(--bg-color);
+            font-family: 'Courier New', Courier, monospace;
+        }
+        canvas {
+            display: block;
+            filter: blur(0.6px) contrast(1.2);
+        }
+        #ui-overlay {
+            position: absolute;
+            top: 20px; left: 20px;
+            color: var(--glow-color);
+            pointer-events: none;
+            text-shadow: 0 0 10px var(--glow-color);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-size: 14px;
+        }
+        .vignette {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle, transparent 40%, rgba(0,0,0,0.8) 120%);
+            pointer-events: none;
+        }
+        .scanline {
+            width: 100%; height: 2px;
+            background: rgba(0, 255, 204, 0.1);
+            position: absolute;
+            z-index: 10;
+            animation: scan 8s linear infinite;
+        }
+        @keyframes scan {
+            0% { top: -5%; } 100% { top: 105%; }
+        }
+    </style>
+</head>
+<body>
+    <div id="ui-overlay">
+        [ SYSTEM STATUS: ENCRYPTED ]<br>
+        [ FREQUENCY: 44.1 KHZ ]<br>
+        [ BITRATE: VARIABLE ]
+    </div>
+    <div class="vignette"></div>
+    <div class="scanline"></div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height, columns;
+        const fontSize = 16;
+        const characters = "01ABCDEF⚡︎⚝✕∆∑∏√∞≠≈⌚︎⌘⌥";
+        let drops = [];
+
+        function init() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+
+            columns = Math.floor(width / fontSize);
+            drops = [];
+            for (let i = 0; i < columns; i++) {
+                drops[i] = Math.random() * -100; // Offset start heights
+            }
+        }
+
+        function draw() {
+            // Fading trail effect via semi-transparent rectangle
+            ctx.fillStyle = "rgba(5, 10, 10, 0.1)";
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.font = fontSize + "px monospace";
+
+            for (let i = 0; i < drops.length; i++) {
+                const char = characters.charAt(Math.floor(Math.random() * characters.length));
+                
+                // Vertical gradient-like effect based on drop progress
+                const yPos = drops[i] * fontSize;
+                
+                // Glow for the leading character
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = "#00ffcc";
+                ctx.fillStyle = "#fff"; // Head of the snake
+                ctx.fillText(char, i * fontSize, yPos);
+
+                // Body of the stream
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = "#00ffcc";
+                ctx.fillText(char, i * fontSize, yPos - fontSize);
+                
+                // Reset scroll
+                if (yPos > height && Math.random() > 0.975) {
+                    drops[i] = 0;
+                }
+
+                // Increment position with slight randomness for drift
+                drops[i] += 0.8 + Math.random() * 0.5;
+            }
+
+            // Holographic jitter effect
+            if (Math.random() > 0.98) {
+                ctx.translate(Math.random() * 2 - 1, 0);
+            }
+
+            requestAnimationFrame(draw);
+        }
+
+        // Interactive mouse distortion
+        window.addEventListener('mousemove', (e) => {
+            const mouseCol = Math.floor(e.clientX / fontSize);
+            if (drops[mouseCol]) {
+                drops[mouseCol] -= 5; // Kick the data stream up on hover
+            }
+        });
+
+        window.addEventListener('resize', init);
+
+        init();
+        draw();
+    </script>
+</body>
+</html>
