@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neuro-Plasticity Maze Explorer</title>
+    <style>
+        :root {
+            --bg: #05070a;
+            --wall: #1a2233;
+            --path: #00f2ff;
+            --player: #ff007b;
+            --accent: #7000ff;
+        }
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        canvas {
+            box-shadow: 0 0 50px rgba(0, 242, 255, 0.15);
+            border-radius: 8px;
+            cursor: none;
+        }
+        .ui {
+            position: absolute;
+            top: 20px;
+            text-align: center;
+            pointer-events: none;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        .instructions {
+            position: absolute;
+            bottom: 20px;
+            font-size: 0.8rem;
+            opacity: 0.6;
+        }
+        .glitch {
+            text-shadow: 2px 0 var(--player), -2px 0 var(--path);
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; } 
+            50% { opacity: 0.7; }
+        }
+    </style>
+</head>
+<body>
+    <div class="ui">
+        <h1 class="glitch">Neuro-Plasticity Maze</h1>
+        <div id="stats">Level: 1 | Synapses: 0</div>
+    </div>
+    <canvas id="mazeCanvas"></canvas>
+    <div class="instructions">Use Arrow Keys or WASD to rewire the connections</div>
+
+    <script>
+        const canvas = document.getElementById('mazeCanvas');
+        const ctx = canvas.getContext('2d');
+        const stats = document.getElementById('stats');
+
+        let cols, rows;
+        const cellSize = 30;
+        let grid = [];
+        let stack = [];
+        let current;
+        let player = { x: 0, y: 0 };
+        let goal = { x: 0, y: 0 };
+        let level = 1;
+        let score = 0;
+
+        class Cell {
+            constructor(i, j) {
+                this.i = i;
+                this.j = j;
+                this.walls = [true, true, true, true]; // top, right, bottom, left
+                this.visited = false;
+            }
+
+            show() {
+                let x = this.i * cellSize;
+                let y = this.j * cellSize;
+                ctx.strokeStyle = varColor('--wall');
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                if (this.walls[0]) { ctx.moveTo(x, y); ctx.lineTo(x + cellSize, y); }
+                if (this.walls[1]) { ctx.moveTo(x + cellSize, y); ctx.lineTo(x + cellSize, y + cellSize); }
+                if (this.walls[2]) { ctx.moveTo(x + cellSize, y + cellSize); ctx.lineTo(x, y + cellSize); }
+                if (this.walls[3]) { ctx.moveTo(x, y + cellSize); ctx.lineTo(x, y); }
+                ctx.stroke();
+
+                if (this.visited) {
+                    ctx.fillStyle = 'rgba(112, 0, 255, 0.05)';
+                    ctx.fillRect(x, y, cellSize, cellSize);
+                }
+            }
+        }
+
+        function varColor(name) { return getComputedStyle(document.documentElement).getPropertyValue(name); }
+
+        function setup() {
+            cols = Math.floor(window.innerWidth * 0.8 / cellSize);
+            rows = Math.floor(window.innerHeight * 0.7 / cellSize);
+            canvas.width = cols * cellSize;
+            canvas.height = rows * cellSize;
+            
+            grid = [];
+            for (let j = 0; j < rows; j++) {
+                for (let i = 0; i < cols; i++) {
+                    grid.push(new Cell(i, j));
+                }
+            }
+            current = grid[0];
+            generateMaze();
+
+            player = { x: 0, y: 0 };
+            goal = { x: cols - 1, y: rows - 1 };
+            draw();
+        }
+
+        function index(i, j) {
+            if (i < 0 || j < 0 || i > cols - 1 || j > rows - 1) return -1;
+            return i + j * cols;
+        }
+
+        function generateMaze() {
+            let completed = false;
+            while (!completed) {
+                current.visited = true;
+                let next = checkNeighbors(current);
+                if (next) {
+                    next.visited = true;
+                    stack.push(current);
+                    removeWalls(current, next);
+                    current = next;
+                } else if (stack.length > 0) {
+                    current = stack.pop();
+                } else {
+                    completed = true;
+                }
+            }
+        }
+
+        function checkNeighbors(cell) {
+            let neighbors = [];
+            let top = grid[index(cell.i, cell.j - 1)];
+            let right = grid[index(cell.i + 1, cell.j)];
+            let bottom = grid[index(cell.i, cell.j + 1)];
+            let left = grid[index(cell.i - 1, cell.j)];
+
+            if (top && !top.visited) neighbors.push(top);
+            if (right && !right.visited) neighbors.push(right);
+            if (bottom && !bottom.visited) neighbors.push(bottom);
+            if (left && !left.visited) neighbors.push(left);
+
+            if (neighbors.length > 0) {
+                return neighbors[Math.floor(Math.random() * neighbors.length)];
+            }
+            return undefined;
+        }
+
+        function removeWalls(a, b) {
+            let x = a.i - b.i;
+            if (x === -1) { a.walls[1] = false; b.walls[3] = false; }
+            else if (x ===  1) { a.walls[3] = false; b.walls[1] = false; }
+            let y = a.j - b.j;
+            if (y === -1) { a.walls[2] = false; b.walls[0] = false; }
+            else if (y ===  1) { a.walls[0] = false; b.walls[2] = false; }
+        }
+
+        function draw() {
+            ctx.fillStyle = varColor('--bg');
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            grid.forEach(cell => cell.show());
+
+            // Goal Glow
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = varColor('--path');
+            ctx.fillStyle = varColor('--path');
+            ctx.beginPath();
+            ctx.arc(goal.x * cellSize + cellSize/2, goal.y * cellSize + cellSize/2, cellSize/4, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Player
+            ctx.shadowColor = varColor('--player');
+            ctx.fillStyle = varColor('--player');
+            ctx.beginPath();
+            ctx.arc(player.x * cellSize + cellSize/2, player.y * cellSize + cellSize/2, cellSize/3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            if (player.x === goal.x && player.y === goal.y) {
+                level++;
+                score += 100;
+                stats.innerText = `Level: ${level} | Synapses: ${score}`;
+                setup();
+            }
+        }
+
+        window.addEventListener('keydown', e => {
+            let cell = grid[index(player.x, player.y)];
+            if ((e.key === 'ArrowUp' || e.key === 'w') && !cell.walls[0]) player.y--;
+            if ((e.key === 'ArrowRight' || e.key === 'd') && !cell.walls[1]) player.x++;
+            if ((e.key === 'ArrowDown' || e.key === 's') && !cell.walls[2]) player.y++;
+            if ((e.key === 'ArrowLeft' || e.key === 'a') && !cell.walls[3]) player.x--;
+            draw();
+        });
+
+        window.addEventListener('resize', setup);
+        setup();
+    </script>
+</body>
+</html>
