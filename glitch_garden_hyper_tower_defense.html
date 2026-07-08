@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Glitch Garden: Hyper Tower Defense</title>
+    <style>
+        body, html { margin: 0; padding: 0; overflow: hidden; background: #050505; font-family: 'Courier New', Courier, monospace; color: #0f0; }
+        canvas { display: block; filter: contrast(120%) brightness(110%); }
+        #ui {
+            position: absolute; top: 20px; left: 20px; pointer-events: none;
+            text-shadow: 0 0 10px #0f0;
+        }
+        .stat { font-size: 1.2rem; margin-bottom: 5px; }
+        #shop {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 15px; background: rgba(0, 20, 0, 0.8); padding: 10px; border: 2px solid #0f0;
+        }
+        .turret-btn {
+            background: #111; border: 1px solid #0f0; color: #0f0; padding: 10px 15px; cursor: pointer; pointer-events: auto;
+            transition: all 0.2s;
+        }
+        .turret-btn:hover { background: #0f0; color: #000; }
+        .turret-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+        #game-over {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: #000; border: 5px solid #f0f; padding: 40px; text-align: center;
+            display: none; box-shadow: 0 0 30px #f0f;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <div class="stat">CREDITS: <span id="money-val">250</span></div>
+        <div class="stat">INTEGRITY: <span id="health-val">100</span>%</div>
+        <div class="stat">WAVE: <span id="wave-val">1</span></div>
+    </div>
+    <div id="shop">
+        <button class="turret-btn" onclick="setTool('basic')">PULSE UNIT (50)</button>
+        <button class="turret-btn" onclick="setTool('sniper')">VECTOR BEAM (120)</button>
+        <button class="turret-btn" onclick="setTool('slow')">STASIS FIELD (80)</button>
+    </div>
+    <div id="game-over">
+        <h1 style="color: #f0f;">SYSTEM CRITICAL ERROR</h1>
+        <p>Your garden has been corrupted.</p>
+        <button onclick="location.reload()" class="turret-btn">REBOOT SYSTEM</button>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const moneyEl = document.getElementById('money-val');
+        const healthEl = document.getElementById('health-val');
+        const waveEl = document.getElementById('wave-val');
+        
+        let width, height;
+        let money = 250, health = 100, wave = 1;
+        let activeTool = null;
+        let gameOver = false;
+
+        const path = [];
+        const enemies = [];
+        const turrets = [];
+        const projectiles = [];
+        const particles = [];
+
+        const COSTS = { basic: 50, sniper: 120, slow: 80 };
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            generatePath();
+        }
+
+        function generatePath() {
+            path.length = 0;
+            const segments = 6;
+            let cx = 0, cy = height / 2;
+            path.push({x: cx, y: cy});
+            for(let i=1; i<=segments; i++) {
+                cx = (i * width) / segments;
+                cy = (height * 0.2) + Math.random() * (height * 0.6);
+                path.push({x: cx, y: cy});
+            }
+        }
+
+        function setTool(type) {
+            if (money >= COSTS[type]) activeTool = type;
+        }
+
+        canvas.addEventListener('mousedown', e => {
+            if (!activeTool || gameOver) return;
+            if (money >= COSTS[activeTool]) {
+                turrets.push(new Turret(e.clientX, e.clientY, activeTool));
+                money -= COSTS[activeTool];
+                moneyEl.innerText = money;
+                activeTool = null;
+            }
+        });
+
+        class Enemy {
+            constructor() {
+                this.pos = { x: path[0].x, y: path[0].y };
+                this.targetIdx = 1;
+                this.speed = 1.5 + (wave * 0.2);
+                this.hp = 50 + (wave * 30);
+                this.maxHp = this.hp;
+                this.slowed = false;
+                this.color = `hsl(${Math.random() * 360}, 100%, 50%)`;
+            }
+            update() {
+                const target = path[this.targetIdx];
+                const dx = target.x - this.pos.x;
+                const dy = target.y - this.pos.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                const move = this.slowed ? this.speed * 0.4 : this.speed;
+                
+                this.pos.x += (dx/dist) * move;
+                this.pos.y += (dy/dist) * move;
+
+                if (dist < 5) {
+                    this.targetIdx++;
+                    if (this.targetIdx >= path.length) {
+                        health -= 10;
+                        healthEl.innerText = Math.max(0, health);
+                        if (health <= 0) endGame();
+                        return false;
+                    }
+                }
+                return this.hp > 0;
+            }
+            draw() {
+                ctx.shadowBlur = 10; ctx.shadowColor = this.color;
+                ctx.fillStyle = this.color;
+                ctx.fillRect(this.pos.x - 10, this.pos.y - 10, 20, 20);
+                ctx.shadowBlur = 0;
+                // HP Bar
+                ctx.fillStyle = '#333'; ctx.fillRect(this.pos.x-15, this.pos.y-20, 30, 4);
+                ctx.fillStyle = '#f00'; ctx.fillRect(this.pos.x-15, this.pos.y-20, (this.hp/this.maxHp)*30, 4);
+            }
+        }
+
+        class Turret {
+            constructor(x, y, type) {
+                this.x = x; this.y = y; this.type = type;
+                this.range = type === 'sniper' ? 300 : 150;
+                this.cooldown = 0;
+                this.maxCooldown = type === 'sniper' ? 60 : (type === 'slow' ? 40 : 20);
+            }
+            update() {
+                if (this.cooldown > 0) this.cooldown--;
+                else {
+                    const target = enemies.find(e => Math.hypot(e.pos.x - this.x, e.pos.y - this.y) < this.range);
+                    if (target) {
+                        projectiles.push(new Projectile(this.x, this.y, target, this.type));
+                        this.cooldown = this.maxCooldown;
+                    }
+                }
+            }
+            draw() {
+                ctx.strokeStyle = '#0f0';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(this.x - 15, this.y - 15, 30, 30);
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 5, 0, Math.PI*2); 
+                ctx.fillStyle = this.type === 'slow' ? '#0af' : (this.type === 'sniper' ? '#f0f' : '#0f0');
+                ctx.fill();
+            }
+        }
+
+        class Projectile {
+            constructor(x, y, target, type) {
+                this.x = x; this.y = y; this.target = target; this.type = type;
+                this.speed = 7; this.dead = false;
+            }
+            update() {
+                const dx = this.target.pos.x - this.x;
+                const dy = this.target.pos.y - this.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                if (dist < 10) {
+                    this.impact();
+                    this.dead = true;
+                } else {
+                    this.x += (dx/dist) * this.speed;
+                    this.y += (dy/dist) * this.speed;
+                }
+            }
+            impact() {
+                if (this.type === 'slow') {
+                    this.target.slowed = true;
+                    this.target.hp -= 5;
+                    setTimeout(() => { if(this.target) this.target.slowed = false; }, 2000);
+                } else {
+                    this.target.hp -= this.type === 'sniper' ? 40 : 15;
+                }
+                if (this.target.hp <= 0) {
+                    money += 15;
+                    moneyEl.innerText = money;
+                    spawnExplosion(this.x, this.y, '#fff');
+                }
+            }
+            draw() {
+                ctx.fillStyle = '#fff';
+                ctx.beginPath(); ctx.arc(this.x, this.y, 3, 0, Math.PI*2); ctx.fill();
+            }
+        }
+
+        function spawnExplosion(x, y, color) {
+            for(let i=0; i<8; i++) {
+                particles.push({ 
+                    x, y, 
+                    vx: (Math.random()-0.5)*10, vy: (Math.random()-0.5)*10, 
+                    life: 1, 
+                    color 
+                });
+            }
+        }
+
+        function endGame() {
+            gameOver = true;
+            document.getElementById('game-over').style.display = 'block';
+        }
+
+        function loop() {
+            if (gameOver) return;
+            ctx.fillStyle = 'rgba(5, 5, 5, 0.2)';
+            ctx.fillRect(0, 0, width, height);
+
+            // Draw Path
+            ctx.setLineDash([10, 10]);
+            ctx.strokeStyle = '#222';
+            ctx.lineWidth = 40;
+            ctx.beginPath();
+            ctx.moveTo(path[0].x, path[0].y);
+            path.forEach(p => ctx.lineTo(p.x, p.y));
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Spawn Wave Logic
+            if (Math.random() < 0.015 && enemies.length < wave * 5) {
+                enemies.push(new Enemy());
+            } else if (enemies.length === 0 && wave < 50) {
+                wave++;
+                waveEl.innerText = wave;
+            }
+
+            // Update & Draw
+            enemies.forEach((e, i) => {
+                if (!e.update()) enemies.splice(i, 1);
+                else e.draw();
+            });
+
+            turrets.forEach(t => {
+                t.update();
+                t.draw();
+            });
+
+            projectiles.forEach((p, i) => {
+                p.update();
+                if (p.dead) projectiles.splice(i, 1);
+                else p.draw();
+            });
+
+            particles.forEach((p, i) => {
+                p.x += p.vx; p.y += p.vy;
+                p.life -= 0.02;
+                if(p.life <= 0) particles.splice(i, 1);
+                else {
+                    ctx.fillStyle = `rgba(255,255,255,${p.life})`;
+                    ctx.fillRect(p.x, p.y, 2, 2);
+                }
+            });
+
+            requestAnimationFrame(loop);
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+        loop();
+    </script>
+</body>
+</html>
