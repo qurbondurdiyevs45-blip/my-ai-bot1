@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metabolic Cellular Automata</title>
+    <style>
+        :root {
+            --bg: #05080a;
+            --panel: rgba(20, 30, 40, 0.85);
+            --accent: #2ecc71;
+        }
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background: var(--bg); overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #ecf0f1;
+        }
+        canvas {
+            display: block; cursor: crosshair;
+        }
+        .controls {
+            position: absolute; top: 20px; left: 20px;
+            background: var(--panel); padding: 20px; border-radius: 12px;
+            backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5); pointer-events: auto;
+            width: 240px; user-select: none;
+        }
+        h2 { margin: 0 0 10px 0; font-size: 16px; text-transform: uppercase; letter-spacing: 2px; color: var(--accent); }
+        .stat { font-size: 12px; margin-bottom: 15px; color: #95a5a6; }
+        .slider-group { margin-bottom: 12px; }
+        label { display: block; font-size: 11px; margin-bottom: 4px; }
+        input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+        .btn { 
+            background: var(--accent); border: none; padding: 8px 12px; 
+            color: #000; font-weight: bold; border-radius: 4px; 
+            cursor: pointer; width: 100%; margin-top: 10px; transition: 0.2s;
+        }
+        .btn:hover { filter: brightness(1.2); }
+        .hint { font-size: 10px; margin-top: 10px; opacity: 0.6; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <h2>Metabolic Sim</h2>
+        <div class="stat">Population: <span id="popCount">0</span></div>
+        <div class="slider-group">
+            <label>Nutrient Diffusion</label>
+            <input type="range" id="diffusion" min="0.1" max="0.9" step="0.05" value="0.4">
+        </div>
+        <div class="slider-group">
+            <label>Metabolic Speed</label>
+            <input type="range" id="speed" min="1" max="60" step="1" value="30">
+        </div>
+        <div class="slider-group">
+            <label>Mutation Rate</label>
+            <input type="range" id="mutation" min="0" max="0.1" step="0.001" value="0.01">
+        </div>
+        <button class="btn" id="resetBtn">CLEAR AGENTS</button>
+        <div class="hint">Click & Drag to seed nutrients</div>
+    </div>
+    <canvas id="simCanvas"></canvas>
+
+    <script>
+        /**
+         * Metabolic Cellular Automata
+         * A hybrid of grid-based diffusion and particle-based metabolic agents.
+         * Agents consume 'energy' from a hidden field and replicate or die based on efficiency.
+         */
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d', { alpha: false });
+        const popStat = document.getElementById('popCount');
+        
+        const GRID_SCALE = 6;
+        let width, height, cols, rows;
+        let grid = []; // Nutrient field
+        let nextGrid = [];
+        let agents = [];
+        let isDrawing = false;
+
+        const params = {
+            diffusion: 0.4,
+            mutation: 0.01,
+            maxAgents: 800
+        };
+
+        function init() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            cols = Math.ceil(width / GRID_SCALE);
+            rows = Math.ceil(height / GRID_SCALE);
+            
+            grid = new Float32Array(cols * rows).fill(0);
+            nextGrid = new Float32Array(cols * rows).fill(0);
+            agents = [];
+            
+            // Seed some agents
+            for(let i = 0; i < 20; i++) spawnAgent(width/2 + Math.random()*100-50, height/2 + Math.random()*100-50);
+        }
+
+        function spawnAgent(x, y, dna = null) {
+            if (agents.length >= params.maxAgents) return;
+            agents.push({
+                x: x,
+                y: y,
+                energy: 50,
+                dna: dna || { 
+                    speed: Math.random() * 2 + 1, 
+                    sense: Math.random() * 20 + 10, 
+                    hue: Math.random() * 360 
+                }
+            });
+        }
+
+        function update() {
+            // 1. Nutrient Diffusion & Recovery
+            params.diffusion = parseFloat(document.getElementById('diffusion').value);
+            for (let i = 0; i < cols; i++) {
+                for (let j = 0; j < rows; j++) {
+                    let idx = i + j * cols;
+                    let total = grid[idx];
+                    let neighbors = 0;
+
+                    // Simple 4-way diffusion
+                    if (i > 0) { total += grid[idx-1]; neighbors++; }
+                    if (i < cols - 1) { total += grid[idx+1]; neighbors++; }
+                    if (j > 0) { total += grid[idx-cols]; neighbors++; }
+                    if (j < rows - 1) { total += grid[idx+cols]; neighbors++; }
+
+                    nextGrid[idx] = (total / (neighbors + 1)) * 0.995 + 0.002; // Decay + auto-recovery
+                }
+            }
+            [grid, nextGrid] = [nextGrid, grid];
+
+            // 2. Update Agents
+            for (let i = agents.length - 1; i >= 0; i--) {
+                let a = agents[i];
+                
+                // Interaction with grid
+                let gx = Math.floor(a.x / GRID_SCALE) % cols;
+                let gy = Math.floor(a.y / GRID_SCALE) % rows;
+                if(gx < 0) gx += cols; if(gy < 0) gy += rows;
+                let gIdx = gx + gy * cols;
+
+                // Metabolism
+                let consume = Math.min(grid[gIdx], 0.15);
+                grid[gIdx] -= consume;
+                a.energy += consume * 15;
+                a.energy -= 0.5; // Basal metabolic rate
+
+                // Movement (Simple Brownian / Gradient Senses)
+                a.x += (Math.random() - 0.5) * a.dna.speed;
+                a.y += (Math.random() - 0.5) * a.dna.speed;
+
+                // Wrap around
+                if (a.x < 0) a.x = width; if (a.x > width) a.x = 0;
+                if (a.y < 0) a.y = height; if (a.y > height) a.y = 0;
+
+                // Replication
+                if (a.energy > 120) {
+                    a.energy = 50;
+                    let newDna = {...a.dna};
+                    if (Math.random() < params.mutation) {
+                        newDna.hue = (newDna.hue + Math.random() * 40 - 20) % 360;
+                        newDna.speed = Math.max(0.5, newDna.speed + Math.random() * 0.4 - 0.2);
+                    }
+                    spawnAgent(a.x, a.y, newDna);
+                }
+
+                // Death
+                if (a.energy <= 0) {
+                    agents.splice(i, 1);
+                }
+            }
+            popStat.textContent = agents.length;
+        }
+
+        function draw() {
+            ctx.fillStyle = '#05080a';
+            ctx.fillRect(0, 0, width, height);
+
+            // Draw Field
+            for (let i = 0; i < cols; i++) {
+                for (let j = 0; j < rows; j++) {
+                    let val = grid[i + j * cols];
+                    if (val > 0.05) {
+                        ctx.fillStyle = `rgba(46, 204, 113, ${val * 0.3})`;
+                        ctx.fillRect(i * GRID_SCALE, j * GRID_SCALE, GRID_SCALE, GRID_SCALE);
+                    }
+                }
+            }
+
+            // Draw Agents
+            agents.forEach(a => {
+                ctx.fillStyle = `hsl(${a.dna.hue}, 80%, 60%)`;
+                ctx.beginPath();
+                ctx.arc(a.x, a.y, 2, 0, Math.PI * 2);
+                ctx.fill();
+                // Energy ring
+                ctx.strokeStyle = `hsla(${a.dna.hue}, 80%, 60%, 0.3)`;
+                ctx.beginPath();
+                ctx.arc(a.x, a.y, a.energy / 10, 0, Math.PI * 2);
+                ctx.stroke();
+            });
+        }
+
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        window.addEventListener('mousedown', () => isDrawing = true);
+        window.addEventListener('mouseup', () => isDrawing = false);
+        window.addEventListener('mousemove', (e) => {
+            if (!isDrawing) return;
+            let gx = Math.floor(e.clientX / GRID_SCALE);
+            let gy = Math.floor(e.clientY / GRID_SCALE);
+            for(let ox = -3; ox <= 3; ox++) {
+                for(let oy = -3; oy <= 3; oy++) {
+                    let idx = (gx + ox) + (gy + oy) * cols;
+                    if (idx >= 0 && idx < grid.length) grid[idx] = 1.0;
+                }
+            }
+        });
+
+        document.getElementById('resetBtn').onclick = () => agents = [];
+        window.addEventListener('resize', init);
+
+        init();
+        loop();
+    </script>
+</body>
+</html>
