@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quantum Leap Sequencer</title>
+    <style>
+        :root {
+            --bg: #0a0a12;
+            --panel: #1a1a2e;
+            --accent: #00f2ff;
+            --lit: #7000ff;
+        }
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #controls {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: var(--panel);
+            border-radius: 12px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            z-index: 10;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(16, 1fr);
+            gap: 8px;
+            padding: 20px;
+            background: var(--panel);
+            border-radius: 8px;
+            box-shadow: 0 0 30px rgba(0, 242, 255, 0.1);
+            z-index: 10;
+        }
+        .cell {
+            width: 35px;
+            height: 35px;
+            background: #252545;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .cell.active {
+            background: var(--accent);
+            box-shadow: 0 0 15px var(--accent);
+        }
+        .cell.playing {
+            transform: scale(1.15);
+            border: 2px solid white;
+        }
+        button {
+            background: var(--lit);
+            color: white;
+            border: none;
+            padding: 10px 25px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        button:hover { filter: brightness(1.2); }
+        .status { font-family: monospace; color: var(--accent); }
+        canvas {
+            position: absolute;
+            top: 0; left: 0;
+            z-index: 1;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="controls">
+        <button id="playBtn">Start Reactor</button>
+        <div class="status">BPM: <span id="bpmVal">120</span></div>
+        <input type="range" id="bpmSlider" min="60" max="200" value="120">
+    </div>
+
+    <div class="grid" id="sequencerGrid"></div>
+
+    <canvas id="visualizer"></canvas>
+
+    <script>
+        const gridContainer = document.getElementById('sequencerGrid');
+        const playBtn = document.getElementById('playBtn');
+        const bpmSlider = document.getElementById('bpmSlider');
+        const bpmVal = document.getElementById('bpmVal');
+        const canvas = document.getElementById('visualizer');
+        const ctx = canvas.getContext('2d');
+
+        let audioCtx, currentStep = 0, isPlaying = false, nextStepTime = 0.0;
+        const steps = 16, rows = 8;
+        const gridData = Array.from({ length: rows }, () => Array(steps).fill(false));
+        const frequencies = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88, 523.25].reverse();
+
+        // Initialize Grid
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < steps; c++) {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                cell.dataset.row = r;
+                cell.dataset.col = c;
+                cell.addEventListener('click', () => {
+                    gridData[r][c] = !gridData[r][c];
+                    cell.classList.toggle('active');
+                });
+                gridContainer.appendChild(cell);
+            }
+        }
+
+        function playTone(freq, time) {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, time);
+            gain.gain.setValueAtTime(0.3, time);
+            gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.5);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start(time);
+            osc.stop(time + 0.5);
+        }
+
+        function scheduler() {
+            while (nextStepTime < audioCtx.currentTime + 0.1) {
+                playStep(currentStep, nextStepTime);
+                const secondsPerBeat = 60.0 / bpmSlider.value / 4; // 16th notes
+                nextStepTime += secondsPerBeat;
+                currentStep = (currentStep + 1) % steps;
+            }
+            if (isPlaying) requestAnimationFrame(scheduler);
+        }
+
+        function playStep(step, time) {
+            document.querySelectorAll('.cell').forEach(el => el.classList.remove('playing'));
+            for (let r = 0; r < rows; r++) {
+                if (gridData[r][step]) {
+                    playTone(frequencies[r], time);
+                    const cell = document.querySelector(`.cell[data-row="${r}"][data-col="${step}"]`);
+                    cell.classList.add('playing');
+                }
+            }
+        }
+
+        playBtn.addEventListener('click', () => {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            isPlaying = !isPlaying;
+            if (isPlaying) {
+                nextStepTime = audioCtx.currentTime;
+                scheduler();
+                playBtn.innerText = 'Stop Reactor';
+            } else {
+                playBtn.innerText = 'Start Reactor';
+            }
+        });
+
+        bpmSlider.oninput = () => bpmVal.innerText = bpmSlider.value;
+
+        // Background Visualizer
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        function draw() {
+            ctx.fillStyle = 'rgba(10, 10, 18, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            if (isPlaying) {
+                for(let i=0; i<5; i++) {
+                    ctx.beginPath();
+                    ctx.strokeStyle = `hsl(${Math.random()*360}, 70%, 50%)`;
+                    ctx.lineWidth = Math.random() * 2;
+                    ctx.arc(Math.random()*canvas.width, Math.random()*canvas.height, Math.random()*50, 0, Math.PI*2);
+                    ctx.stroke();
+                }
+            }
+            requestAnimationFrame(draw);
+        }
+        draw();
+
+        window.onresize = () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        };
+    </script>
+</body>
+</html>
