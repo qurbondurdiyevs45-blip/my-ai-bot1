@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Procedural Pixel Explorer</title>
+    <style>
+        body {
+            background: #0a0a0c;
+            color: #d1d1e0;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+        .controls {
+            margin-bottom: 15px;
+            background: #1a1a2e;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #4834d4;
+            box-shadow: 0 0 15px rgba(72, 52, 212, 0.3);
+        }
+        canvas {
+            image-rendering: pixelated;
+            border: 4px solid #333;
+            box-shadow: 0 0 30px rgba(0,0,0,0.5);
+            background: #000;
+            max-width: 90vw;
+            max-height: 70vh;
+        }
+        button {
+            background: #4834d4;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            cursor: pointer;
+            font-family: inherit;
+            text-transform: uppercase;
+            font-weight: bold;
+            transition: background 0.2s;
+        }
+        button:hover { background: #686de0; }
+        .stats { margin-top: 10px; font-size: 0.9em; color: #a29bfe; }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <button onclick="resetMap()">Regenerate World</button>
+        <span>Speed: </span>
+        <input type="range" id="speed" min="1" max="60" value="30">
+    </div>
+    <canvas id="gameCanvas"></canvas>
+    <div class="stats" id="status">Initializing Dungeon...</div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const size = 60; // Grid size
+        const tileSize = 10;
+        canvas.width = size * tileSize;
+        canvas.height = size * tileSize;
+
+        let grid = [];
+        let actor = { x: 0, y: 0, trail: [] };
+        let goal = { x: 0, y: 0 };
+
+        function resetMap() {
+            // Generate Cave via Cellular Automata
+            grid = Array.from({length: size}, () => 
+                Array.from({length: size}, () => Math.random() < 0.45 ? 1 : 0)
+            );
+
+            for(let i = 0; i < 4; i++) applyAutomata();
+            
+            // Ensure entrance and exit
+            spawnActor();
+            spawnGoal();
+            actor.trail = [];
+            document.getElementById('status').innerText = "Dungeon Restructured. Exploring...";
+        }
+
+        function applyAutomata() {
+            let newGrid = JSON.parse(JSON.stringify(grid));
+            for(let y = 0; y < size; y++) {
+                for(let x = 0; x < size; x++) {
+                    let wallCount = 0;
+                    for(let dy = -1; dy <= 1; dy++) {
+                        for(let dx = -1; dx <= 1; dx++) {
+                            let nx = x + dx, ny = y + dy;
+                            if(nx < 0 || ny < 0 || nx >= size || ny >= size) wallCount++;
+                            else if(grid[ny][nx] === 1) wallCount++;
+                        }
+                    }
+                    if (wallCount > 4) newGrid[y][x] = 1;
+                    else newGrid[y][x] = 0;
+                }
+            }
+            grid = newGrid;
+        }
+
+        function spawnActor() {
+            while(true) {
+                let rx = Math.floor(Math.random() * size);
+                let ry = Math.floor(Math.random() * size);
+                if(grid[ry][rx] === 0) {
+                    actor.x = rx; actor.y = ry;
+                    break;
+                }
+            }
+        }
+
+        function spawnGoal() {
+            while(true) {
+                let rx = Math.floor(Math.random() * size);
+                let ry = Math.floor(Math.random() * size);
+                if(grid[ry][rx] === 0 && (rx !== actor.x || ry !== actor.y)) {
+                    goal.x = rx; goal.y = ry;
+                    break;
+                }
+            }
+        }
+
+        function update() {
+            // Simple A* style logic or Random Walk for the 'bot'
+            // Move towards goal if possible, otherwise explore
+            const directions = [{x:0, y:-1}, {x:0, y:1}, {x:-1, y:0}, {x:1, y:0}];
+            let bestDist = Infinity;
+            let move = null;
+
+            directions.sort(() => Math.random() - 0.5); // Add jitter
+
+            for(let d of directions) {
+                let nx = actor.x + d.x;
+                let ny = actor.y + d.y;
+                if(nx >= 0 && ny >= 0 && nx < size && ny < size && grid[ny][nx] === 0) {
+                    let dist = Math.hypot(nx - goal.x, ny - goal.y);
+                    // Discourage immediate backtracking slightly unless it's the only way
+                    let isBacktrack = actor.trail.some(p => p.x === nx && p.y === ny);
+                    let score = dist + (isBacktrack ? 10 : 0);
+                    
+                    if(score < bestDist) {
+                        bestDist = score;
+                        move = {x: nx, y: ny};
+                    }
+                }
+            }
+
+            if(move) {
+                actor.x = move.x;
+                actor.y = move.y;
+                actor.trail.push({x: move.x, y: move.y});
+                if(actor.trail.length > 50) actor.trail.shift();
+            }
+
+            if(actor.x === goal.x && actor.y === goal.y) {
+                resetMap();
+            }
+        }
+
+        function draw() {
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            for(let y = 0; y < size; y++) {
+                for(let x = 0; x < size; x++) {
+                    if(grid[y][x] === 1) {
+                        ctx.fillStyle = '#2c3e50';
+                        ctx.fillRect(x*tileSize, y*tileSize, tileSize-1, tileSize-1);
+                    }
+                }
+            }
+
+            // Draw Trail
+            ctx.fillStyle = 'rgba(104, 109, 224, 0.4)';
+            actor.trail.forEach(p => ctx.fillRect(p.x*tileSize, p.y*tileSize, tileSize, tileSize));
+
+            // Draw Goal
+            ctx.fillStyle = '#f1c40f';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#f1c40f';
+            ctx.fillRect(goal.x*tileSize, goal.y*tileSize, tileSize, tileSize);
+            ctx.shadowBlur = 0;
+
+            // Draw Actor
+            ctx.fillStyle = '#ff4757';
+            ctx.fillRect(actor.x*tileSize, actor.y*tileSize, tileSize, tileSize);
+        }
+
+        let lastTime = 0;
+        function loop(timestamp) {
+            let speed = document.getElementById('speed').value;
+            if(timestamp - lastTime > (1000 / speed)) {
+                update();
+                draw();
+                lastTime = timestamp;
+            }
+            requestAnimationFrame(loop);
+        }
+
+        resetMap();
+        requestAnimationFrame(loop);
+    </script>
+</body>
+</html>
