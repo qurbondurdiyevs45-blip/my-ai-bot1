@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Nebula Swarm</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #050505;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: rgba(0, 255, 255, 0.8);
+            pointer-events: none;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+        .hint {
+            font-size: 0.8rem;
+            opacity: 0.6;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <h1>NEON NEBULA SWARM</h1>
+        <p class="hint">Move to attract &bull; Click to repel &bull; Release to drift</p>
+    </div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let particles = [];
+        const particleCount = 1200;
+        const mouse = { x: -1000, y: -1000, active: false, clicking: false };
+
+        function init() {
+            resize();
+            createParticles();
+            animate();
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.size = Math.random() * 2 + 0.5;
+                this.hue = Math.random() * 60 + 180; // Blue to Teal range
+                this.brightness = Math.random() * 50 + 50;
+                this.alpha = Math.random() * 0.5 + 0.2;
+            }
+
+            update() {
+                // Friction
+                this.vx *= 0.98;
+                this.vy *= 0.98;
+
+                // Mouse Interaction
+                const dx = mouse.x - this.x;
+                const dy = mouse.y - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const force = 400;
+
+                if (dist < 300) {
+                    const angle = Math.atan2(dy, dx);
+                    const mForce = (300 - dist) / 300;
+                    
+                    if (mouse.clicking) {
+                        // Repel
+                        this.vx -= Math.cos(angle) * mForce * 2;
+                        this.vy -= Math.sin(angle) * mForce * 2;
+                        this.hue = 0; // Turn Red on click
+                    } else {
+                        // Attract
+                        this.vx += Math.cos(angle) * mForce * 0.15;
+                        this.vy += Math.sin(angle) * mForce * 0.15;
+                        this.hue = (this.hue + 1) % 360;
+                    }
+                }
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Boundary Wrap
+                if (this.x < 0) this.x = width;
+                if (this.x > width) this.x = 0;
+                if (this.y < 0) this.y = height;
+                if (this.y > height) this.y = 0;
+            }
+
+            draw() {
+                ctx.fillStyle = `hsla(${this.hue}, 100%, ${this.brightness}%, ${this.alpha})`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function createParticles() {
+            particles = [];
+            for (let i = 0; i < particleCount; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function animate() {
+            // Ghosting trail effect
+            ctx.fillStyle = 'rgba(5, 5, 10, 0.15)';
+            ctx.fillRect(0, 0, width, height);
+
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        // Event Listeners
+        window.addEventListener('resize', resize);
+        window.addEventListener('mousemove', e => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+        window.addEventListener('mousedown', () => mouse.clicking = true);
+        window.addEventListener('mouseup', () => mouse.clicking = false);
+        window.addEventListener('touchstart', e => {
+            mouse.clicking = true;
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+        });
+        window.addEventListener('touchend', () => mouse.clicking = false);
+
+        init();
+    </script>
+</body>
+</html>
