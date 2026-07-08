@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parallax Constellation Navigator</title>
+    <style>
+        :root {
+            --bg: #050510;
+            --accent: #00d2ff;
+            --text: #ffffff;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        #canvas-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            cursor: crosshair;
+        }
+        .ui-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            pointer-events: none;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        .instruction {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255,255,255,0.5);
+            font-size: 0.8rem;
+        }
+        .node-info {
+            position: absolute;
+            background: rgba(0,0,0,0.8);
+            border: 1px solid var(--accent);
+            padding: 10px;
+            font-size: 0.75rem;
+            display: none;
+            pointer-events: none;
+            border-radius: 4px;
+            box-shadow: 0 0 15px rgba(0, 210, 255, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container">
+        <canvas id="starCanvas"></canvas>
+        <div class="ui-overlay">
+            <h2 id="system-status">Deep Space Data Grid</h2>
+            <div id="coord-display">X: 0 | Y: 0</div>
+        </div>
+        <div id="tooltip" class="node-info"></div>
+        <div class="instruction">Move Mouse: Rotate View | Click: Pulse Burst | Drag: Shift Perspective</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('starCanvas');
+        const ctx = canvas.getContext('2d');
+        const tooltip = document.getElementById('tooltip');
+        const coordDisplay = document.getElementById('coord-display');
+
+        let width, height;
+        let stars = [];
+        let mouse = { x: 0, y: 0, px: 0, py: 0, down: false };
+        let angleX = 0;
+        let angleY = 0;
+        const starCount = 400;
+        const connections = [];
+
+        class Star {
+            constructor() {
+                this.reset();
+            }
+            reset() {
+                this.x = (Math.random() - 0.5) * 2000;
+                this.y = (Math.random() - 0.5) * 2000;
+                this.z = (Math.random() - 0.5) * 2000;
+                this.size = Math.random() * 2 + 1;
+                this.color = `hsl(${200 + Math.random() * 40}, 80%, 70%)`;
+                this.name = `Node-${Math.floor(Math.random()*9999)}`;
+            }
+            project(ax, ay, w, h) {
+                // Rotate around Y
+                let x1 = this.x * Math.cos(ay) - this.z * Math.sin(ay);
+                let z1 = this.x * Math.sin(ay) + this.z * Math.cos(ay);
+                // Rotate around X
+                let y2 = this.y * Math.cos(ax) - z1 * Math.sin(ax);
+                let z2 = this.y * Math.sin(ax) + z1 * Math.cos(ax);
+                
+                let factor = 800 / (800 + z2);
+                this.px = x1 * factor + w / 2;
+                this.py = y2 * factor + h / 2;
+                this.pz = z2;
+                this.visible = z2 > -700;
+                this.screenSize = this.size * factor;
+            }
+        }
+
+        function init() {
+            resize();
+            stars = Array.from({length: starCount}, () => new Star());
+            animate();
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resize);
+        window.addEventListener('mousemove', e => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+            if(!mouse.down) {
+                angleY += (mouse.x - width/2) * 0.00001;
+                angleX += (mouse.y - height/2) * 0.00001;
+            } else {
+                angleY += (mouse.x - mouse.px) * 0.005;
+                angleX -= (mouse.y - mouse.py) * 0.005;
+            }
+            mouse.px = mouse.x;
+            mouse.py = mouse.y;
+            coordDisplay.innerText = `X: ${Math.round(angleX*100)} | Y: ${Math.round(angleY*100)}`;
+        });
+        window.addEventListener('mousedown', () => mouse.down = true);
+        window.addEventListener('mouseup', () => mouse.down = false);
+
+        function draw() {
+            ctx.fillStyle = '#050510';
+            ctx.fillRect(0, 0, width, height);
+
+            // Sort stars by depth
+            stars.forEach(s => s.project(angleX, angleY, width, height));
+            stars.sort((a,b) => b.pz - a.pz);
+
+            let hoveredNode = null;
+
+            ctx.lineWidth = 0.5;
+            for (let i = 0; i < stars.length; i++) {
+                const s = stars[i];
+                if (!s.visible) continue;
+
+                // Draw star
+                ctx.beginPath();
+                ctx.arc(s.px, s.py, Math.max(0.1, s.screenSize), 0, Math.PI * 2);
+                ctx.fillStyle = s.color;
+                ctx.globalAlpha = Math.min(1, (s.pz + 1000) / 2000);
+                ctx.fill();
+
+                // Connection logic (nearest neighbors)
+                if (i < 50) { // Limit for performance
+                     for(let j = i+1; j < i + 4; j++) {
+                         let target = stars[j % stars.length];
+                         let dist = Math.hypot(s.px - target.px, s.py - target.py);
+                         if(dist < 150) {
+                            ctx.beginPath();
+                            ctx.moveTo(s.px, s.py);
+                            ctx.lineTo(target.px, target.py);
+                            ctx.strokeStyle = `rgba(0, 210, 255, ${0.1 * (1 - dist/150)})`;
+                            ctx.stroke();
+                         }
+                     }
+                }
+
+                // Hover detection
+                if (Math.hypot(s.px - mouse.x, s.py - mouse.y) < 10) {
+                    hoveredNode = s;
+                }
+            }
+
+            if (hoveredNode) {
+                tooltip.style.display = 'block';
+                tooltip.style.left = hoveredNode.px + 15 + 'px';
+                tooltip.style.top = hoveredNode.py + 15 + 'px';
+                tooltip.innerHTML = `<strong>NODE ID:</strong> ${hoveredNode.name}<br><strong>REL_Z:</strong> ${hoveredNode.pz.toFixed(2)}`;
+                ctx.beginPath();
+                ctx.arc(hoveredNode.px, hoveredNode.py, hoveredNode.screenSize * 4, 0, Math.PI * 2);
+                ctx.strokeStyle = '#fff';
+                ctx.stroke();
+            } else {
+                tooltip.style.display = 'none';
+            }
+
+            // Auto rotation drift
+            if(!mouse.down) {
+                angleY += 0.001;
+                angleX += 0.0005;
+            }
+        }
+
+        function animate() {
+            draw();
+            requestAnimationFrame(animate);
+        }
+
+        init();
+    </script>
+</body>
+</html>
