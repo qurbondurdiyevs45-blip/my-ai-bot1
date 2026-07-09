@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Biometric Fluid Field</title>
+    <style>
+        :root {
+            --bg: #050505;
+            --accent: #00ffcc;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: var(--bg);
+            font-family: 'Courier New', Courier, monospace;
+        }
+        canvas {
+            display: block;
+        }
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: var(--accent);
+            pointer-events: none;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-size: 12px;
+            text-shadow: 0 0 5px var(--accent);
+        }
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            color: #444;
+            font-size: 10px;
+            text-align: right;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">Kinetic Resonance Field: Active</div>
+    <div class="controls">MOVE TO DISTURB / CLICK TO PULSE</div>
+    <canvas id="fluidCanvas"></canvas>
+
+    <script>
+        /**
+         * Biometric Cursor Fluid Field
+         * A high-performance interactive grid system using vector-based physics.
+         * Simulates a non-Newtonian fluid response to cursor velocity.
+         */
+
+        const canvas = document.getElementById('fluidCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let particles = [];
+        const spacing = 25;
+        const mouse = { x: -1000, y: -1000, active: false, vx: 0, vy: 0 };
+        let lastMouse = { x: 0, y: 0 };
+
+        class Particle {
+            constructor(x, y) {
+                this.originX = x;
+                this.originY = y;
+                this.x = x;
+                this.y = y;
+                this.vx = 0;
+                this.vy = 0;
+                this.radius = 1.5;
+                this.friction = 0.95;
+                this.spring = 0.05;
+            }
+
+            update() {
+                const dx = mouse.x - this.x;
+                const dy = mouse.y - this.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                const force = Math.max(0, 150 - distance) / 150;
+
+                if (distance < 150) {
+                    // Mouse velocity influence
+                    this.vx += mouse.vx * force * 0.2;
+                    this.vy += mouse.vy * force * 0.2;
+                    
+                    // Repulsion
+                    this.vx -= (dx / distance) * force * 2;
+                    this.vy -= (dy / distance) * force * 2;
+                }
+
+                // Spring back to origin
+                this.vx += (this.originX - this.x) * this.spring;
+                this.vy += (this.originY - this.y) * this.spring;
+
+                this.vx *= this.friction;
+                this.vy *= this.friction;
+
+                this.x += this.vx;
+                this.y += this.vy;
+            }
+
+            draw() {
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                const opacity = Math.min(1, 0.2 + speed * 0.1);
+                ctx.fillStyle = `rgba(0, 255, 204, ${opacity})`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius + speed * 0.5, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Draw faint lines to neighbors to create a mesh feeling
+                if (speed > 1) {
+                    ctx.strokeStyle = `rgba(0, 255, 204, ${speed * 0.05})`;
+                    ctx.lineWidth = 0.5;
+                    ctx.beginPath();
+                    ctx.moveTo(this.x, this.y);
+                    ctx.lineTo(this.originX, this.originY);
+                    ctx.stroke();
+                }
+            }
+        }
+
+        function init() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            particles = [];
+
+            for (let x = spacing; x < width; x += spacing) {
+                for (let y = spacing; y < height; y += spacing) {
+                    particles.push(new Particle(x, y));
+                }
+            }
+        }
+
+        function animate() {
+            ctx.fillStyle = 'rgba(5, 5, 5, 0.15)';
+            ctx.fillRect(0, 0, width, height);
+
+            // Update mouse velocity
+            mouse.vx = mouse.x - lastMouse.x;
+            mouse.vy = mouse.y - lastMouse.y;
+            lastMouse.x = mouse.x;
+            lastMouse.y = mouse.y;
+
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('mousemove', e => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+
+        window.addEventListener('mousedown', () => {
+            particles.forEach(p => {
+                const dx = mouse.x - p.x;
+                const dy = mouse.y - p.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if(dist < 300) {
+                    p.vx += (dx / dist) * 15;
+                    p.vy += (dy / dist) * 15;
+                }
+            });
+        });
+
+        window.addEventListener('resize', init);
+
+        init();
+        animate();
+    </script>
+</body>
+</html>
