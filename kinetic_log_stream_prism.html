@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Kinetic Log Stream Prism</title>
+    <style>
+        :root {
+            --bg: #050505;
+            --accent: #00ffca;
+            --text: #e0e0e0;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Courier New', Courier, monospace;
+        }
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            cursor: crosshair;
+        }
+        .ui-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            pointer-events: none;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            border-left: 2px solid var(--accent);
+            padding-left: 15px;
+        }
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border: 1px solid var(--accent);
+            font-size: 10px;
+            pointer-events: all;
+        }
+        input[type=range] {
+            width: 100%;
+            accent-color: var(--accent);
+        }
+    </style>
+</head>
+<body>
+    <div class="ui-overlay">
+        <h1 id="status">SYSTEM_LOG_INTERCEPTOR</h1>
+        <div id="metrics">LATENCY: 14ms | ENTROPY: 0.82</div>
+    </div>
+    
+    <div class="controls">
+        <label>ROTATION SPEED</label><br>
+        <input type="range" id="speed" min="1" max="10" value="2"><br>
+        <label>DATA DENSITY</label><br>
+        <input type="range" id="density" min="5" max="50" value="20">
+    </div>
+
+    <canvas id="streamCanvas"></canvas>
+
+    <script>
+        /**
+         * Kinetic Log Stream Prism
+         * A dynamic 3D visualizer for mock developer log streams
+         * Built with vanilla JS and Canvas 2D API using projection matrices
+         */
+
+        const canvas = document.getElementById('streamCanvas');
+        const ctx = canvas.getContext('2d');
+        const speedCtrl = document.getElementById('speed');
+        const densityCtrl = document.getElementById('density');
+        
+        let width, height;
+        let logs = [];
+        let angle = 0;
+
+        const LOG_TYPES = ['INFO', 'WARN', 'ERROR', 'FATAL', 'DEBUG', 'TRACE'];
+        const COLORS = {
+            'INFO': '#00ffca', 'WARN': '#ffcc00', 'ERROR': '#ff3e3e', 
+            'FATAL': '#ffffff', 'DEBUG': '#888888', 'TRACE': '#3498db'
+        };
+
+        class LogNode {
+            constructor() {
+                this.reset();
+            }
+            reset() {
+                this.x = (Math.random() - 0.5) * 600;
+                this.y = (Math.random() - 0.5) * 600;
+                this.z = Math.random() * 800 - 400;
+                this.type = LOG_TYPES[Math.floor(Math.random() * LOG_TYPES.length)];
+                this.text = `0x${Math.random().toString(16).slice(2, 6)}_${this.type}_PKG_${Math.floor(Math.random()*999)}`;
+            }
+            update(speed) {
+                this.z -= speed;
+                if (this.z < -400) {
+                    this.reset();
+                    this.z = 400;
+                }
+            }
+            draw() {
+                // Simple perspective projection
+                const scale = 500 / (500 + this.z);
+                const px = this.x * scale + width / 2;
+                const py = this.y * scale + height / 2;
+
+                if (px < 0 || px > width || py < 0 || py > height) return;
+
+                const opacity = (this.z + 400) / 800;
+                ctx.globalAlpha = opacity;
+                ctx.fillStyle = COLORS[this.type];
+                ctx.font = `${Math.floor(10 * scale)}px 'Courier New'`;
+                ctx.fillText(this.text, px, py);
+
+                // Draw connection lines to center for 'Depth' effect
+                ctx.strokeStyle = COLORS[this.type];
+                ctx.lineWidth = 0.5 * scale;
+                ctx.beginPath();
+                ctx.moveTo(px, py);
+                ctx.lineTo(width/2 + (this.x*0.1), height/2 + (this.y*0.1));
+                ctx.stroke();
+            }
+        }
+
+        function init() {
+            resize();
+            logs = Array.from({length: 150}, () => new LogNode());
+            animate();
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resize);
+
+        function animate() {
+            ctx.fillStyle = 'black';
+            ctx.globalAlpha = 1;
+            ctx.fillRect(0, 0, width, height);
+
+            const speed = parseInt(speedCtrl.value);
+            const density = parseInt(densityCtrl.value);
+
+            // Slice array based on density UI
+            const activeLogs = logs.slice(0, density * 3);
+
+            activeLogs.forEach(log => {
+                log.update(speed);
+                log.draw();
+            });
+
+            // Dynamic Overlay Update
+            if (Math.random() > 0.95) {
+                document.getElementById('metrics').innerText = 
+                    `LATENCY: ${Math.floor(Math.random()*40)}ms | ENTROPY: ${(Math.random()).toFixed(2)} | THREADS: ${Math.floor(Math.random()*100)}`;
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        init();
+    </script>
+</body>
+</html>
