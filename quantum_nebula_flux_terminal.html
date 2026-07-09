@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quantum Nebula Flux Terminal</title>
+    <style>
+        :root {
+            --bg: #050508;
+            --accent: #00f2ff;
+            --border: #1a1a2e;
+            --text: #e0e0ff;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden;
+            height: 100vh;
+        }
+        #canvas-nebula {
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+        .terminal-interface {
+            position: relative;
+            z-index: 10;
+            width: 80%;
+            max-width: 900px;
+            margin: 5vh auto;
+            background: rgba(10, 10, 20, 0.85);
+            border: 1px solid var(--border);
+            box-shadow: 0 0 30px rgba(0, 242, 255, 0.1);
+            backdrop-filter: blur(8px);
+            height: 80vh;
+            display: flex;
+            flex-direction: column;
+            border-radius: 4px;
+        }
+        .terminal-header {
+            background: var(--border);
+            padding: 10px;
+            font-size: 0.8rem;
+            letter-spacing: 2px;
+            display: flex;
+            justify-content: space-between;
+            color: var(--accent);
+        }
+        .output-stream {
+            flex-grow: 1;
+            padding: 20px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--accent) transparent;
+        }
+        .input-line {
+            display: flex;
+            padding: 15px 20px;
+            border-top: 1px solid var(--border);
+        }
+        .prompt {
+            color: var(--accent);
+            margin-right: 10px;
+        }
+        #cmd-input {
+            flex-grow: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: white;
+            font-family: inherit;
+            font-size: 1rem;
+        }
+        .log-entry { margin-bottom: 8px; line-height: 1.4; }
+        .system { color: #fcc419; }
+        .success { color: #51cf66; }
+        .error { color: #ff6b6b; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas-nebula"></canvas>
+    <div class="terminal-interface">
+        <div class="terminal-header">
+            <span>QUANTUM_NEBULA_OS // v1.0.4</span>
+            <span>STATUS: SYNCHRONIZED</span>
+        </div>
+        <div class="output-stream" id="output"></div>
+        <div class="input-line">
+            <span class="prompt">&gt;</span>
+            <input type="text" id="cmd-input" autofocus spellcheck="false">
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas-nebula');
+        const ctx = canvas.getContext('2d');
+        const outputStream = document.getElementById('output');
+        const cmdInput = document.getElementById('cmd-input');
+
+        let particles = [];
+        const colors = ['#00f2ff', '#7000ff', '#ff007c', '#00ffaa'];
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+            reset() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.vx = (Math.random() - 0.5) * 0.5;
+                this.vy = (Math.random() - 0.5) * 0.5;
+                this.size = Math.random() * 2;
+                this.alpha = Math.random() * 0.5 + 0.2;
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+            }
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                if (this.x < 0 || this.x > canvas.width) this.vx *= -1;
+                if (this.y < 0 || this.y > canvas.height) this.vy *= -1;
+            }
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.globalAlpha = this.alpha;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function initParticles() {
+            particles = Array.from({ length: 150 }, () => new Particle());
+        }
+
+        function animate() {
+            ctx.fillStyle = 'rgba(5, 5, 8, 0.2)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+            requestAnimationFrame(animate);
+        }
+
+        const log = (msg, type = '') => {
+            const div = document.createElement('div');
+            div.className = `log-entry ${type}`;
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            outputStream.appendChild(div);
+            outputStream.scrollTop = outputStream.scrollHeight;
+        };
+
+        const commands = {
+            help: () => log('Available: clear, flux, sys_info, connect, echo [msg]', 'system'),
+            clear: () => outputStream.innerHTML = '',
+            sys_info: () => log(`CPU: 64 Core Quantum | RAM: 512TB Liquid Neon | OS: NebulaOS-v1.0`, 'success'),
+            connect: () => {
+                log('Establishing uplink...', 'system');
+                setTimeout(() => log('Connected to DeepSpace Hub.', 'success'), 1500);
+            },
+            echo: (args) => log(args.join(' ')),
+            flux: () => {
+                log('Injecting high-density matter into the nebula...', 'system');
+                for(let i=0; i<50; i++) particles.push(new Particle());
+                log(`Active particle count: ${particles.length}`, 'success');
+            }
+        };
+
+        cmdInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                const [cmd, ...args] = cmdInput.value.trim().split(' ');
+                log(`> ${cmdInput.value}`);
+                if (commands[cmd]) {
+                    commands[cmd](args);
+                } else if (cmd) {
+                    log(`Command not found: ${cmd}`, 'error');
+                }
+                cmdInput.value = '';
+            }
+        });
+
+        // Initialize
+        initParticles();
+        animate();
+        log('System Boot Successful... Type "help" to begin sequence.', 'success');
+    </script>
+</body>
+</html>
