@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HexPulse // Dynamic State Monitor</title>
+    <style>
+        :root {
+            --bg: #0a0a0c;
+            --primary: #00f3ff;
+            --secondary: #bc13fe;
+            --surface: #16161a;
+            --text: #e0e0e0;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+            display: flex;
+            height: 100vh;
+        }
+
+        #hex-canvas {
+            flex: 1;
+            background: radial-gradient(circle at center, #1a1a2e 0%, #0a0a0c 100%);
+        }
+
+        #sidebar {
+            width: 320px;
+            background: var(--surface);
+            border-left: 1px solid #333;
+            padding: 20px;
+            box-shadow: -5px 0 15px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+            z-index: 10;
+        }
+
+        h1 {
+            font-size: 1.2rem;
+            color: var(--primary);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            border-bottom: 2px solid var(--primary);
+            padding-bottom: 10px;
+        }
+
+        .control-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            font-size: 0.8rem;
+            margin-bottom: 5px;
+            color: var(--secondary);
+        }
+
+        input[type="range"] {
+            width: 100%;
+            background: #333;
+            cursor: pointer;
+        }
+
+        #data-stream {
+            flex: 1;
+            background: #000;
+            border: 1px solid #444;
+            padding: 10px;
+            font-size: 0.75rem;
+            overflow-y: auto;
+            color: #00ff41;
+            margin-top: 10px;
+        }
+
+        .node-info {
+            font-size: 0.8rem;
+            line-height: 1.6;
+            background: rgba(255,255,255,0.05);
+            padding: 10px;
+            border-radius: 4px;
+        }
+
+        button {
+            background: transparent;
+            border: 1px solid var(--primary);
+            color: var(--primary);
+            padding: 8px;
+            cursor: pointer;
+            transition: 0.3s;
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            background: var(--primary);
+            color: #000;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="hex-canvas"></canvas>
+    
+    <aside id="sidebar">
+        <h1>HexPulse v1.0</h1>
+        <div class="node-info" id="status">
+            Select a node to inspect payload dynamics.
+        </div>
+
+        <div class="control-group">
+            <label>PULSE FREQUENCY</label>
+            <input type="range" id="speed" min="1" max="20" value="5">
+        </div>
+
+        <div class="control-group">
+            <label>FLUX DENSITY</label>
+            <input type="range" id="density" min="5" max="50" value="25">
+        </div>
+
+        <button onclick="resetMap()">RECALIBRATE GRID</button>
+
+        <div id="data-stream"></div>
+    </aside>
+
+    <script>
+        const canvas = document.getElementById('hex-canvas');
+        const ctx = canvas.getContext('2d');
+        const stream = document.getElementById('data-stream');
+        const statusDisplay = document.getElementById('status');
+        
+        let nodes = [];
+        let hexSize = 35;
+        let rows, cols;
+
+        window.addEventListener('resize', init);
+
+        function init() {
+            canvas.width = window.innerWidth - 320;
+            canvas.height = window.innerHeight;
+            resetMap();
+        }
+
+        class HexNode {
+            constructor(q, r, x, y) {
+                this.q = q; // axial coords
+                this.r = r;
+                this.x = x;
+                this.y = y;
+                this.baseValue = Math.random() * 100;
+                this.pulse = 0;
+                this.active = false;
+                this.color = '#16161a';
+            }
+
+            draw() {
+                const angle = Math.PI / 3;
+                ctx.beginPath();
+                ctx.moveTo(this.x + hexSize * Math.cos(0), this.y + hexSize * Math.sin(0));
+                for (let i = 1; i < 6; i++) {
+                    ctx.lineTo(this.x + hexSize * Math.cos(angle * i), this.y + hexSize * Math.sin(angle * i));
+                }
+                ctx.closePath();
+
+                const pulseVal = Math.sin(Date.now() / 1000 * document.getElementById('speed').value + (this.x + this.y) / 100);
+                const opacity = 0.1 + (pulseVal + 1) / 4;
+                
+                ctx.fillStyle = this.active ? '#00f3ff' : `rgba(188, 19, 254, ${opacity})`;
+                ctx.fill();
+                ctx.strokeStyle = '#333';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+
+                if (this.active) {
+                    ctx.shadowBlur = 15;
+                    ctx.shadowColor = '#00f3ff';
+                } else {
+                    ctx.shadowBlur = 0;
+                }
+            }
+        }
+
+        function resetMap() {
+            nodes = [];
+            const spacingX = hexSize * 1.732;
+            const spacingY = hexSize * 1.5;
+            cols = Math.ceil(canvas.width / spacingX) + 1;
+            rows = Math.ceil(canvas.height / spacingY) + 1;
+
+            for (let r = 0; r < rows; r++) {
+                let offset = (r % 2) * (spacingX / 2);
+                for (let q = 0; q < cols; q++) {
+                    nodes.push(new HexNode(q, r, q * spacingX + offset, r * spacingY));
+                }
+            }
+            logStream("Grid Re-initialized: " + nodes.length + " nodes generated.");
+        }
+
+        function logStream(msg) {
+            const entry = document.createElement('div');
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            stream.prepend(entry);
+            if (stream.children.length > 20) stream.lastChild.remove();
+        }
+
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+
+            nodes.forEach(n => {
+                const dist = Math.hypot(n.x - mx, n.y - my);
+                n.active = dist < hexSize;
+                if (n.active) {
+                    statusDisplay.innerHTML = `<strong>NODE SELECTED</strong><br>Coords: Q:${n.q} R:${n.r}<br>Intensity: ${(n.baseValue).toFixed(2)} Hz<br>UUID: ${Math.random().toString(36).substr(2, 9)}`;
+                    logStream("Accessing Node Vector [" + n.q + "," + n.r + "]");
+                }
+            });
+        });
+
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            nodes.forEach(n => n.draw());
+            requestAnimationFrame(animate);
+        }
+
+        init();
+        animate();
+        
+        // Simulate background data tasks
+        setInterval(() => {
+            if (Math.random() > 0.8) {
+                logStream("Data packet injected into cluster " + Math.floor(Math.random() * 5));
+            }
+        }, 2000);
+    </script>
+</body>
+</html>
