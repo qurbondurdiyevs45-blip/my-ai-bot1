@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HEX GLITCH GRID</title>
+    <style>
+        body, html { margin: 0; padding: 0; overflow: hidden; background: #080808; color: #00ff41; font-family: 'Courier New', Courier, monospace; }
+        #ui { position: absolute; top: 20px; left: 20px; z-index: 10; pointer-events: none; }
+        .control { pointer-events: auto; background: rgba(0, 255, 65, 0.1); border: 1px solid #00ff41; padding: 10px; margin-bottom: 10px; text-transform: uppercase; cursor: pointer; }
+        .control:hover { background: rgba(0, 255, 65, 0.3); }
+        canvas { display: block; }
+        #status { position: absolute; bottom: 20px; right: 20px; font-size: 12px; opacity: 0.6; }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <div class="control" onclick="toggleSimulation()">[ Start / Stop Frequency ]</div>
+        <div class="control" onclick="randomizeGrid()">[ Randomize Seed ]</div>
+        <div style="opacity: 0.8">Mode: Neural-Glitch-Interference</div>
+    </div>
+    <div id="status">SYSTEM_READY // BUFFERING_HEX_VECTORS</div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        /**
+         * HEX GLITCH GRID SEQUENCER
+         * A self-modifying visualizer that uses a grid of hexagonal logic states
+         * to drive an OscillatorNode-based glitch synth.
+         */
+
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let active = false;
+        let audioCtx;
+        let nodes = [];
+        let time = 0;
+
+        const GRID_SIZE = 25;
+        const cells = [];
+
+        class Cell {
+            constructor(r, c) {
+                this.r = r;
+                this.c = c;
+                this.state = Math.random() > 0.9 ? 1 : 0;
+                this.hue = Math.random() * 360;
+                this.size = 20;
+                this.x = c * this.size * 1.5 + (r % 2) * (this.size * 0.75);
+                this.y = r * this.size * 0.45;
+            }
+
+            draw() {
+                const noise = Math.sin(time * 0.05 + (this.r * this.c)) * 5;
+                ctx.beginPath();
+                for (let i = 0; i < 6; i++) {
+                    const angle = (Math.PI / 3) * i;
+                    const x = this.x + (this.size + (this.state * noise)) * Math.cos(angle);
+                    const y = this.y + (this.size + (this.state * noise)) * Math.sin(angle);
+                    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                }
+                ctx.closePath();
+                ctx.strokeStyle = this.state > 0 ? `hsla(${this.hue}, 100%, 50%, 0.8)` : '#111';
+                ctx.lineWidth = this.state > 0 ? 2 : 0.5;
+                ctx.stroke();
+
+                if (this.state > 0.5) {
+                    ctx.fillStyle = `hsla(${this.hue}, 80%, 40%, ${0.1 + Math.random() * 0.2})`;
+                    ctx.fill();
+                }
+            }
+
+            update() {
+                if (Math.random() > 0.995) this.state = 1 - this.state;
+                if (this.state > 0) this.hue = (this.hue + 1) % 360;
+            }
+        }
+
+        function init() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            for (let r = 0; r < canvas.height / 10; r++) {
+                for (let c = 0; c < canvas.width / 30; c++) {
+                    cells.push(new Cell(r, c));
+                }
+            }
+        }
+
+        function toggleSimulation() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            active = !active;
+            if (active) animate();
+        }
+
+        function randomizeGrid() {
+            cells.forEach(c => c.state = Math.random() > 0.95 ? 1 : 0);
+        }
+
+        function playGlitch(freq) {
+            if (!active || !audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = Math.random() > 0.5 ? 'square' : 'sawtooth';
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(10, audioCtx.currentTime + 0.1);
+            
+            gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+            gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.1);
+            
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.1);
+        }
+
+        function animate() {
+            if (!active) return;
+            ctx.fillStyle = 'rgba(8, 8, 8, 0.2)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            time++;
+            cells.forEach(cell => {
+                cell.update();
+                cell.draw();
+                if (cell.state > 0.9 && Math.random() > 0.998) {
+                    playGlitch(100 + cell.hue * 2);
+                }
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        init();
+        // Draw static initial state
+        cells.forEach(c => c.draw());
+    </script>
+</body>
+</html>
