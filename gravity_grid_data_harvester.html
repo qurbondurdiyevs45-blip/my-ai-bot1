@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gravity Grid Data Harvester</title>
+    <style>
+        :root {
+            --bg: #0a0a0c;
+            --accent: #00f2ff;
+            --danger: #ff0055;
+            --surface: #1a1a1f;
+        }
+
+        body, html {
+            margin: 0; padding: 0;
+            background: var(--bg);
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #ui-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(26, 26, 31, 0.8);
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid var(--accent);
+            pointer-events: none;
+        }
+
+        .input-panel {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--surface);
+            padding: 15px;
+            border-radius: 40px;
+            box-shadow: 0 0 20px rgba(0, 242, 255, 0.2);
+            display: flex;
+            gap: 10px;
+            pointer-events: all;
+        }
+
+        input {
+            background: #000;
+            border: 1px solid #333;
+            color: var(--accent);
+            padding: 10px 20px;
+            border-radius: 20px;
+            outline: none;
+        }
+
+        button {
+            background: var(--accent);
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: transform 0.2s;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+        }
+
+        .bin-info {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            text-align: right;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+<div id="ui-overlay">
+    <h1>Gravity Grid</h1>
+    <p>Type data nodes into existence. Nodes drift toward matching frequency zones.</p>
+    <small>Nodes: <span id="count">0</span> | Avg Mass: <span id="mass">0</span></small>
+</div>
+
+<div class="bin-info">
+    <div style="color: #00f2ff">Zone A: Strings</div>
+    <div style="color: #ff0055">Zone B: Numbers</div>
+</div>
+
+<div class="input-panel">
+    <input type="text" id="dataInput" placeholder="Inject data node..." autocomplete="off">
+    <button onclick="spawnNode()">SPAWN</button>
+</div>
+
+<canvas id="world"></canvas>
+
+<script>
+    const canvas = document.getElementById('world');
+    const ctx = canvas.getContext('2d');
+    const input = document.getElementById('dataInput');
+    const nodes = [];
+    
+    let width, height;
+
+    function resize() {
+        width = canvas.width = window.innerWidth;
+        height = canvas.height = window.innerHeight;
+    }
+
+    window.addEventListener('resize', resize);
+    resize();
+
+    class DataNode {
+        constructor(val, x, y) {
+            this.val = val;
+            this.isNum = !isNaN(val) && val.trim() !== '';
+            this.x = x;
+            this.y = y;
+            this.vx = (Math.random() - 0.5) * 4;
+            this.vy = (Math.random() - 0.5) * 4;
+            this.radius = Math.max(20, Math.min(60, val.length * 8));
+            this.color = this.isNum ? '#ff0055' : '#00f2ff';
+            this.targetX = this.isNum ? width * 0.8 : width * 0.2;
+            this.targetY = height / 2;
+            this.life = 1.0;
+        }
+
+        update() {
+            // Attract to target zones
+            const dx = this.targetX - this.x;
+            const dy = this.targetY - this.y;
+            this.vx += dx * 0.001;
+            this.vy += dy * 0.001;
+
+            // Friction
+            this.vx *= 0.98;
+            this.vy *= 0.98;
+
+            this.x += this.vx;
+            this.y += this.vy;
+
+            // Bounce wall
+            if (this.x < this.radius || this.x > width - this.radius) this.vx *= -0.5;
+            if (this.y < this.radius || this.y > height - this.radius) this.vy *= -0.5;
+        }
+
+        draw() {
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+            ctx.strokeStyle = this.color;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            ctx.fillStyle = 'rgba(255,255,255,0.1)';
+            ctx.fill();
+
+            ctx.fillStyle = '#fff';
+            ctx.font = '12px Courier New';
+            ctx.textAlign = 'center';
+            ctx.fillText(this.val, this.x, this.y + 5);
+        }
+    }
+
+    function spawnNode() {
+        const val = input.value;
+        if (!val) return;
+        
+        nodes.push(new DataNode(val, width / 2, height - 100));
+        input.value = '';
+        document.getElementById('count').innerText = nodes.length;
+    }
+
+    input.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') spawnNode();
+    });
+
+    function animate() {
+        ctx.fillStyle = 'rgba(10, 10, 12, 0.2)';
+        ctx.fillRect(0, 0, width, height);
+
+        // Draw targets
+        ctx.setLineDash([5, 5]);
+        ctx.strokeStyle = 'rgba(0, 242, 255, 0.2)';
+        ctx.strokeRect(50, 50, 300, height - 100);
+        ctx.strokeStyle = 'rgba(255, 0, 85, 0.2)';
+        ctx.strokeRect(width - 350, 50, 300, height - 100);
+        ctx.setLineDash([]);
+
+        nodes.forEach(node => {
+            node.update();
+            node.draw();
+        });
+
+        requestAnimationFrame(animate);
+    }
+
+    animate();
+</script>
+</body>
+</html>
