@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VertexSynth // Shader Playground</title>
+    <style>
+        :root {
+            --bg: #0a0a0c;
+            --accent: #00ffca;
+            --text: #e0e0e5;
+            --border: #22252a;
+        }
+        body, html { margin: 0; padding: 0; height: 100%; width: 100%; background: var(--bg); color: var(--text); font-family: 'Courier New', Courier, monospace; overflow: hidden; }
+        #layout { display: grid; grid-template-columns: 400px 1fr; height: 100vh; }
+        #editor-pane { background: #111114; border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+        .header { padding: 15px; background: #16161b; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { margin: 0; font-size: 14px; text-transform: uppercase; letter-spacing: 2px; color: var(--accent); }
+        textarea { flex-grow: 1; background: transparent; color: #a1a1b3; border: none; padding: 20px; font-size: 13px; line-height: 1.6; resize: none; outline: none; caret-color: var(--accent); white-space: pre; overflow-x: auto; }
+        #canvas-container { position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+        canvas { width: 100%; height: 100%; object-fit: contain; }
+        #status-bar { padding: 8px 15px; font-size: 11px; background: #08080a; border-top: 1px solid var(--border); color: #666; }
+        .controls { position: absolute; bottom: 20px; right: 20px; display: flex; gap: 10px; }
+        button { background: #1c1c22; border: 1px solid var(--border); color: var(--accent); padding: 8px 16px; cursor: pointer; transition: 0.2s; font-family: inherit; }
+        button:hover { background: var(--accent); color: #000; box-shadow: 0 0 15px rgba(0,255,202,0.3); }
+        .error-overlay { position: absolute; bottom: 50px; left: 20px; color: #ff5555; background: rgba(0,0,0,0.8); padding: 10px; font-size: 12px; display: none; border-left: 3px solid #ff5555; }
+    </style>
+</head>
+<body>
+    <div id="layout">
+        <div id="editor-pane">
+            <div class="header">
+                <h1>VertexSynth</h1>
+                <span id="fps-counter">-- FPS</span>
+            </div>
+            <textarea id="code-input" spellcheck="false">// Fragment Shader
+precision highp float;
+uniform float u_time;
+uniform vec2 u_resolution;
+
+void main() {
+    vec2 uv = (gl_FragCoord.xy * 2.0 - u_resolution.xy) / min(u_resolution.y, u_resolution.x);
+    
+    float d = length(uv);
+    vec3 color = vec3(0.1, 0.2, 0.3);
+    
+    for(float i = 0.0; i < 3.0; i++) {
+        uv = fract(uv * 1.5) - 0.5;
+        d = sin(d * 8.0 + u_time) / 8.0;
+        d = abs(d);
+        d = 0.02 / d;
+        color *= d * vec3(0.5, 0.8, 0.9);
+    }
+
+    gl_FragColor = vec4(color, 1.0);
+}</textarea>
+            <div id="status-bar">Ready to compile. Uniforms: u_time, u_resolution.</div>
+        </div>
+        <div id="canvas-container">
+            <canvas id="gl-canvas"></canvas>
+            <div id="error-box" class="error-overlay"></div>
+            <div class="controls">
+                <button id="run-btn">COMPILE & RUN</button>
+                <button id="reset-btn">RESET TIME</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gl-canvas');
+        const gl = canvas.getContext('webgl');
+        const editor = document.getElementById('code-input');
+        const runBtn = document.getElementById('run-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        const errorBox = document.getElementById('error-box');
+        const fpsDisplay = document.getElementById('fps-counter');
+
+        let program;
+        let startTime = Date.now();
+        let animationFrame;
+
+        const vsSource = `
+            attribute vec4 a_position;
+            void main() {
+                gl_Position = a_position;
+            }
+        `;
+
+        function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                const msg = gl.getShaderInfoLog(shader);
+                gl.deleteShader(shader);
+                throw new Error(msg);
+            }
+            return shader;
+        }
+
+        function initProgram() {
+            try {
+                const fsSource = editor.value;
+                const vertexShader = createShader(gl, gl.VERTEX_SHADER, vsSource);
+                const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
+                
+                const newProgram = gl.createProgram();
+                gl.attachShader(newProgram, vertexShader);
+                gl.attachShader(newProgram, fragmentShader);
+                gl.linkProgram(newProgram);
+
+                if (!gl.getProgramParameter(newProgram, gl.LINK_STATUS)) {
+                    throw new Error(gl.getProgramInfoLog(newProgram));
+                }
+
+                program = newProgram;
+                errorBox.style.display = 'none';
+            } catch (e) {
+                errorBox.textContent = e.message;
+                errorBox.style.display = 'block';
+            }
+        }
+
+        function render(now) {
+            if (!program) return;
+            
+            canvas.width = canvas.clientWidth;
+            canvas.height = canvas.clientHeight;
+            gl.viewport(0, 0, canvas.width, canvas.height);
+
+            gl.clearColor(0, 0, 0, 1);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+
+            gl.useProgram(program);
+
+            const positionBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]), gl.STATIC_DRAW);
+            
+            const posLoc = gl.getAttribLocation(program, "a_position");
+            gl.enableVertexAttribArray(posLoc);
+            gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+            const timeLoc = gl.getUniformLocation(program, "u_time");
+            gl.uniform1f(timeLoc, (Date.now() - startTime) * 0.001);
+
+            const resLoc = gl.getUniformLocation(program, "u_resolution");
+            gl.uniform2f(resLoc, canvas.width, canvas.height);
+
+            gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+            // Calculate FPS
+            const delta = (now - lastFrameTime);
+            if (delta > 0) fpsDisplay.textContent = Math.round(1000 / delta) + ' FPS';
+            lastFrameTime = now;
+
+            animationFrame = requestAnimationFrame(render);
+        }
+
+        let lastFrameTime = 0;
+        runBtn.onclick = () => {
+            cancelAnimationFrame(animationFrame);
+            initProgram();
+            render();
+        };
+
+        resetBtn.onclick = () => {
+            startTime = Date.now();
+        };
+
+        // Auto-run initially
+        initProgram();
+        requestAnimationFrame(render);
+
+        // Tab support in textarea
+        editor.addEventListener('keydown', e => {
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                const start = editor.selectionStart;
+                const end = editor.selectionEnd;
+                editor.value = editor.value.substring(0, start) + "    " + editor.value.substring(end);
+                editor.selectionStart = editor.selectionEnd = start + 4;
+            }
+        });
+    </script>
+</body>
+</html>
