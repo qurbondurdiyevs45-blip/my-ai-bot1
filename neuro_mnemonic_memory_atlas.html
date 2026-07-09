@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neuro-Mnemonic Memory Atlas</title>
+    <style>
+        :root {
+            --bg: #050508;
+            --accent: #00f2ff;
+            --node-color: #7000ff;
+            --text: #e0e0e0;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+
+        #canvas-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        h1 {
+            font-size: 1.2rem;
+            letter-spacing: 4px;
+            color: var(--accent);
+            text-transform: uppercase;
+            margin: 0;
+        }
+
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border: 1px solid var(--accent);
+            pointer-events: auto;
+        }
+
+        input {
+            background: transparent;
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            padding: 5px;
+            margin-right: 10px;
+        }
+
+        button {
+            background: var(--accent);
+            color: black;
+            border: none;
+            padding: 6px 12px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        button:hover { opacity: 0.8; }
+    </style>
+</head>
+<body>
+    <div id="overlay">
+        <h1>Neuro-Mnemonic Atlas</h1>
+        <p>A spatial thought-mapping visualization</p>
+    </div>
+    
+    <div id="canvas-container">
+        <canvas id="neuralNet"></canvas>
+    </div>
+
+    <div class="controls">
+        <input type="text" id="thoughtInput" placeholder="Inject memory..." maxlength="25">
+        <button onclick="injectThought()">HYPERLINK</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('neuralNet');
+        const ctx = canvas.getContext('2d');
+        const nodes = [];
+        const connections = [];
+
+        class Node {
+            constructor(x, y, label) {
+                this.x = x;
+                this.y = y;
+                this.label = label;
+                this.vx = (Math.random() - 0.5) * 0.5;
+                this.vy = (Math.random() - 0.5) * 0.5;
+                this.radius = 4;
+                this.pulse = 0;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.pulse += 0.05;
+
+                if (this.x < 0 || this.x > canvas.width) this.vx *= -1;
+                if (this.y < 0 || this.y > canvas.height) this.vy *= -1;
+            }
+
+            draw() {
+                const glow = Math.sin(this.pulse) * 5 + 5;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = '#00f2ff';
+                ctx.shadowBlur = glow;
+                ctx.shadowColor = '#00f2ff';
+                ctx.fill();
+                
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = 'white';
+                ctx.font = '10px Courier New';
+                ctx.fillText(this.label, this.x + 10, this.y + 5);
+            }
+        }
+
+        function init() {
+            resize();
+            const defaults = ['Source', 'Logic', 'Recursion', 'Flux', 'Ghost'];
+            defaults.forEach((t, i) => {
+                nodes.push(new Node(Math.random() * canvas.width, Math.random() * canvas.height, t));
+            });
+            animate();
+        }
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        function injectThought() {
+            const input = document.getElementById('thoughtInput');
+            if (!input.value) return;
+            const newNode = new Node(canvas.width / 2, canvas.height / 2, input.value.toUpperCase());
+            nodes.push(newNode);
+            input.value = '';
+        }
+
+        function drawConnections() {
+            ctx.lineWidth = 0.5;
+            for (let i = 0; i < nodes.length; i++) {
+                for (let j = i + 1; j < nodes.length; j++) {
+                    const dx = nodes[i].x - nodes[j].x;
+                    const dy = nodes[i].y - nodes[j].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < 250) {
+                        ctx.beginPath();
+                        ctx.moveTo(nodes[i].x, nodes[i].y);
+                        ctx.lineTo(nodes[j].x, nodes[j].y);
+                        ctx.strokeStyle = `rgba(112, 0, 255, ${1 - dist/250})`;
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        function animate() {
+            ctx.fillStyle = 'rgba(5, 5, 8, 0.2)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            drawConnections();
+            nodes.forEach(node => {
+                node.update();
+                node.draw();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('resize', resize);
+        init();
+    </script>
+</body>
+</html>
