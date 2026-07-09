@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kinetic Typo-Gravity</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #0a0a0c;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        canvas {
+            display: block;
+        }
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #00ff88;
+            pointer-events: none;
+            text-shadow: 0 0 10px rgba(0,255,136,0.5);
+        }
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        input {
+            background: transparent;
+            border: 1px solid #00ff88;
+            color: #00ff88;
+            padding: 8px;
+            outline: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <h1>KINETIC WELL</h1>
+        <p>Type to add energy | Mouse to distort</p>
+    </div>
+    <div class="controls">
+        <input type="text" id="textInput" placeholder="Type something..." maxlength="20">
+    </div>
+    <canvas id="canvas"></canvas>
+
+<script>
+/**
+ * Kinetic Typography Gravity Well
+ * A particle system where characters are physics-bound objects reacting
+ * to cursor-based gravitational distortions.
+ */
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const input = document.getElementById('textInput');
+
+let width, height;
+let particles = [];
+const mouse = { x: -1000, y: -1000, active: false };
+const config = {
+    gravity: 0.05,
+    friction: 0.98,
+    repulsionRadius: 150,
+    particleDensity: 20
+};
+
+class Particle {
+    constructor(char, x, y) {
+        this.char = char;
+        this.originX = x;
+        this.originY = y;
+        this.x = x;
+        this.y = y;
+        this.vx = (Math.random() - 0.5) * 10;
+        this.vy = (Math.random() - 0.5) * 10;
+        this.size = 16 + Math.random() * 24;
+        this.color = `hsl(${Math.random() * 60 + 140}, 100%, 60%)`;
+        this.angle = 0;
+    }
+
+    update() {
+        // Return to origin strength
+        const dxo = this.originX - this.x;
+        const dyo = this.originY - this.y;
+        this.vx += dxo * 0.01;
+        this.vy += dyo * 0.01;
+
+        // Mouse Interaction
+        const dxm = this.x - mouse.x;
+        const dym = this.y - mouse.y;
+        const dist = Math.sqrt(dxm * dxm + dym * dym);
+
+        if (dist < config.repulsionRadius) {
+            const force = (config.repulsionRadius - dist) / config.repulsionRadius;
+            const angle = Math.atan2(dym, dxm);
+            this.vx += Math.cos(angle) * force * 15;
+            this.vy += Math.sin(angle) * force * 15;
+        }
+
+        this.vx *= config.friction;
+        this.vy *= config.friction;
+        this.x += this.vx;
+        this.y += this.vy;
+
+        // Rotation based on movement
+        this.angle = this.vx * 0.05;
+    }
+
+    draw() {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.angle);
+        ctx.fillStyle = this.color;
+        ctx.font = `bold ${this.size}px Courier New`;
+        ctx.fillText(this.char, 0, 0);
+        
+        // Add a neon glow trail
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = this.color;
+        ctx.restore();
+    }
+}
+
+function init() {
+    width = canvas.width = window.innerWidth;
+    height = canvas.height = window.innerHeight;
+    particles = [];
+    addText("GRAVITY");
+}
+
+function addText(str) {
+    const spacing = 40;
+    const startX = (width - (str.length * spacing)) / 2;
+    const startY = height / 2;
+
+    for (let i = 0; i < str.length; i++) {
+        particles.push(new Particle(str[i], startX + (i * spacing), startY));
+    }
+}
+
+function animate() {
+    ctx.fillStyle = 'rgba(10, 10, 12, 0.2)';
+    ctx.fillRect(0, 0, width, height);
+
+    particles.forEach(p => {
+        p.update();
+        p.draw();
+    });
+
+    requestAnimationFrame(animate);
+}
+
+window.addEventListener('resize', init);
+window.addEventListener('mousemove', (e) => {
+    mouse.x = e.clientX;
+    mouse.y = e.clientY;
+});
+
+input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && input.value.trim() !== "") {
+        addText(input.value.toUpperCase());
+        input.value = "";
+    }
+});
+
+init();
+animate();
+</script>
+</body>
+</html>
